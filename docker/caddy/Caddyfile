@@ -1,7 +1,0 @@
-http://localhost:8080 {
-  log
-	root * /srv/app/public
-	php_fastcgi unix//var/run/php/php-fpm.sock
-	encode zstd gzip
-	file_server
-}

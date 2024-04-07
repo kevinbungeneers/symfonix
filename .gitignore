@@ -1,6 +1,7 @@
 .overmind.sock
 .direnv
 .devshell
+nix-build/
 
 ###> symfony/framework-bundle ###
 /.env.local

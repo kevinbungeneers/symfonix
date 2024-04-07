@@ -1,0 +1,32 @@
+version: "3"
+services:
+  php:
+    image: symfonix-php:latest
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      APP_SECRET: ${APP_SECRET}
+    volumes:
+      - php_socket:/var/run/php
+
+  caddy:
+    image: symfonix-caddy:latest
+    depends_on:
+      - php
+    restart: unless-stopped
+    environment:
+      SERVER_NAME: "http://localhost:8080"
+    volumes:
+      - php_socket:/var/run/php
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      # HTTP
+      - target: 8080
+        published: 8080
+        protocol: tcp
+
+volumes:
+  php_socket:
+  caddy_data:
+  caddy_config:

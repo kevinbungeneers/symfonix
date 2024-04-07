@@ -1,4 +1,6 @@
 {
+    "name": "kevinbungeneers/symfonix",
+    "description": "Symfony in a Nix environment",
     "type": "project",
     "license": "proprietary",
     "minimum-stability": "stable",
