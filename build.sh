@@ -14,8 +14,8 @@ docker run -it --rm \
   nixos/nix:latest \
   sh -c \
   "mkdir -p /app/nix-build &&
-   rm -f /app/nix-build/symfonix-php.tar && nix run --extra-experimental-features \"nix-command flakes\" --option filter-syscalls false .#php.copyTo docker-archive:///app/nix-build/symfonix-php.tar:registry.bungerous.be/kevin/symfony-nix/symfonix-php:latest &&
-   rm -f /app/nix-build/symfonix-caddy.tar && nix run --extra-experimental-features \"nix-command flakes\" --option filter-syscalls false .#caddy.copyTo docker-archive:///app/nix-build/symfonix-caddy.tar:registry.bungerous.be/kevin/symfony-nix/symfonix-caddy:latest"
+   rm -f /app/nix-build/symfonix-php.tar && nix run --extra-experimental-features \"nix-command flakes\" --option filter-syscalls false .#php.copyTo docker-archive:///app/nix-build/symfonix-php.tar:symfonix-php:latest &&
+   rm -f /app/nix-build/symfonix-caddy.tar && nix run --extra-experimental-features \"nix-command flakes\" --option filter-syscalls false .#caddy.copyTo docker-archive:///app/nix-build/symfonix-caddy.tar:symfonix-caddy:latest"
 
 docker load < nix-build/symfonix-php.tar
 docker load < nix-build/symfonix-caddy.tar
