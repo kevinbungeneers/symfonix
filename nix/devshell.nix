@@ -3,16 +3,23 @@
 let
   php = (import ./php.nix { inherit pkgs; });
 
+  # TODO: make this configurable
+  domainList = pkgs.lib.concatStringsSep " " [
+    "symfonix.localhost"
+  ];
+
+  hash = builtins.hashString "sha256" domainList;
+
   caddyFile = pkgs.writeTextFile {
     name = "Caddyfile";
     text = ''
       symfonix.localhost {
         log
       	root * {$PROJECT_DIR}/public
-      	php_fastcgi unix///{$DEVSHELL_STATE_DIR}/php-fpm/data/php-fpm.sock
+      	php_fastcgi unix///{$DEVSHELL_STATE_DIR}/data/php/php-fpm.sock
       	encode zstd gzip
       	file_server
-      	tls {$DEVSHELL_STATE_DIR}/mkcert/symfonix.localhost.pem {$DEVSHELL_STATE_DIR}/mkcert/symfonix.localhost-key.pem
+      	tls {$DEVSHELL_STATE_DIR}/data/mkcert/symfonix.localhost.pem {$DEVSHELL_STATE_DIR}/data/mkcert/symfonix.localhost-key.pem
       }
     '';
   };
@@ -26,7 +33,7 @@ let
       log_level = notice
 
       [www]
-      listen = ''${DEVSHELL_STATE_DIR}/php-fpm/data/php-fpm.sock
+      listen = ''${DEVSHELL_STATE_DIR}/data/php/php-fpm.sock
       listen.mode = 0666
       ping.path = /ping
       clear_env = no
@@ -38,55 +45,68 @@ let
     '';
   };
 
+  startPhpFpm = pkgs.writeShellScript "start-php-fpm" ''
+    mkdir -p $DEVSHELL_STATE_DIR/data/php
+    exec ${php.dev}/bin/php-fpm -y ${fpmConfig}
+  '';
+
+  startCaddy = pkgs.writeShellScript "start-caddy.sh" ''
+    mkcert -CAROOT
+
+    if [[ ! -f $DEVSHELL_STATE_DIR/data/mkcert/hash || "$(cat $DEVSHELL_STATE_DIR/data/mkcert/hash)" != "${hash}" ]]; then
+      mkdir -p $DEVSHELL_STATE_DIR/data/mkcert
+
+      echo "${hash}" > $DEVSHELL_STATE_DIR/data/mkcert/hash
+
+      pushd $DEVSHELL_STATE_DIR/data/mkcert > /dev/null
+
+      PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert ${domainList} 2> /dev/null
+
+      popd > /dev/null
+    fi
+
+    XDG_DATA_HOME=$DEVSHELL_STATE_DIR/data XDG_CONFIG_HOME=$DEVSHELL_STATE_DIR/config exec ${pkgs.caddy}/bin/caddy run --config ${caddyFile} --adapter caddyfile
+  '';
+
+  # Had to wrap overmind so that I could set the root directory. It defaults to the dir where the procfile is located
+  # and there's no env var to override this dir value, for some reason.
+  # The wrapping also allows me to generate SSL certificates when the server's started, instead of in the shellHook.
+  overmind = pkgs.writeShellScriptBin "overmind" ''
+    carootdir=$(mkcert -CAROOT)
+    if [[ ! -f "$carootdir/rootCA.pem" ]]; then
+      PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert -install
+    fi
+
+    extraParams=""
+    case "$@" in
+      'start')
+        ;;
+      's')
+        extraParams="--root $PROJECT_DIR"
+        ;;
+    esac
+
+    OVERMIND_PROCFILE=${procFile} ${pkgs.overmind}/bin/overmind "$@" $extraParams
+  '';
+
   procFile = pkgs.writeTextFile {
     name = "Procfile";
     text = ''
-      caddy: XDG_DATA_HOME=$DEVSHELL_STATE_DIR/caddy/data XDG_CONFIG_HOME=$DEVSHELL_STATE_DIR/caddy/config exec ${pkgs.caddy}/bin/caddy run --config ${caddyFile} --adapter caddyfile
-      php-fpm: exec ${php.dev}/bin/php-fpm -y ${fpmConfig}
+      caddy: exec ${startCaddy}
+      php-fpm: exec ${startPhpFpm}
+      npm-watch: npm run watch
     '';
   };
-
-  # TODO: make this configurable
-  domainList = pkgs.lib.concatStringsSep " " [
-    "symfonix.localhost"
-  ];
-
-  hash = builtins.hashString "sha256" domainList;
 in
 {
   default = pkgs.mkShell {
     buildInputs = [
-      pkgs.overmind
+      overmind
       php.dev
       php.composer
       pkgs.postgresql_16
       pkgs.nodejs_20
       pkgs.dive
     ];
-
-    # TODO: Not sure if the shell hook is the right place to init certificate related stuff?
-    #       Instead of setting the $CAROOT env var, I could just as well do something like mkcert -CAROOT to check
-    #       if mkcert -install has been run.
-    shellHook = ''
-      export OVERMIND_PROCFILE=${procFile}
-
-      mkdir -p $PWD/.devshell/mkcert
-
-      export CAROOT=$PWD/.devshell/mkcert
-
-      if [[ ! -f $PWD/.devshell/mkcert/rootCA.pem ]]; then
-        PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert -install
-      fi
-
-      if [[ ! -f $PWD/.devshell/mkcert/hash || "$(cat $PWD/.devshell/mkcert/hash)" != "${hash}" ]]; then
-        echo "${hash}" > $PWD/.devshell/mkcert/hash
-
-        pushd $PWD/.devshell/mkcert > /dev/null
-
-        PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert ${domainList} 2> /dev/null
-
-        popd > /dev/null
-      fi
-    '';
   };
 }
