@@ -11,9 +11,17 @@
     let
       pkgs = nixpkgs.legacyPackages.${system};
       nix2containerPkgs = nix2container.packages.${system};
+      phpPkgs = (import ./nix/php.nix { inherit pkgs; });
     in {
-      packages = (import ./nix/container.nix { inherit pkgs nix2containerPkgs; });
-      devShells = (import ./nix/devshell.nix { inherit pkgs; });
+      packages = (import ./nix/container.nix {
+        inherit pkgs nix2containerPkgs;
+        inherit (phpPkgs) phpPkgs;
+      });
+
+      devShells = (import ./nix/devshell {
+        inherit pkgs;
+        inherit (phpPkgs) phpPkgs;
+      });
     }
   );
 }

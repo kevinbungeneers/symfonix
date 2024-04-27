@@ -41,8 +41,9 @@ let
       xdebug.mode = debug
     '';
   };
+
+  composer = pkgs.php83Packages.composer.override { php = dev; };
 in
 {
-  inherit prod dev;
-  composer = pkgs.php83Packages.composer.override { php = dev; };
+  phpPkgs = { inherit prod dev composer; };
 }

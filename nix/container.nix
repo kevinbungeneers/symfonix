@@ -1,9 +1,7 @@
-{ pkgs, nix2containerPkgs, ... }:
+{ pkgs, nix2containerPkgs, phpPkgs, ... }:
 
 let
-  php-env = (import ./php.nix { inherit pkgs; });
-
-  project = php-env.prod.buildComposerProject(finalAttrs: {
+  project = phpPkgs.prod.buildComposerProject(finalAttrs: {
     pname = "symfonix";
     version = "1.0.0";
 
@@ -196,7 +194,7 @@ in
     config = {
       User = "${user}";
       WorkingDir = "/share/php/symfonix";
-      Cmd = [ "${php-env.prod}/bin/php-fpm" "-y" "/etc/php/php-fpm.d/php-fpm.conf" ];
+      Cmd = [ "${phpPkgs.prod}/bin/php-fpm" "-y" "/etc/php/php-fpm.d/php-fpm.conf" ];
     };
   };
 }

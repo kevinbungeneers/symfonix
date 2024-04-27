@@ -1,7 +1,0 @@
-http://localhost:8080 {
-  log
-	root * {$PROJECT_DIR}/public
-	php_fastcgi unix///{$DEVSHELL_STATE_DIR}/php-fpm/data/php-fpm.sock
-	encode zstd gzip
-	file_server
-}
