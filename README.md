@@ -16,6 +16,8 @@ An exciting exploration into the integration of Nix and a selection of diverse d
 This allows me to have a reproducible development environment that runs local, yet isolated +
 include those same packages into Docker images.
 
+[Devenv](https://devenv.sh) served as a great inspiration. I highly recommend checking it out!
+
 ### Direnv
 [Direnv](https://direnv.net) is used to automatically start the devshell when you `cd` into the project dir, offering a more seamless experience. There's some custom stuff happening in `.envrc` that makes sure your environment is set up properly.
 
