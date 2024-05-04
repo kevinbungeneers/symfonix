@@ -1,33 +1,46 @@
-{ pkgs, package }:
-let
-  # TODO: Make this configurable
-  databaseName = "symfonix";
+{ pkgs, lib }:
 
-  postgresConf = pkgs.writeTextFile {
-    name = "postgresql.conf";
-    text = ''
-      listen_addresses = '127.0.0.1'
-      port = 5432
-    '';
+let
+  config = {
+    package = pkgs.postgresql_16;
+    databaseName = "symfonix";
+    settings = {
+      "listen_addresses" = "127.0.0.1";
+      "port" = 5432;
+    };
   };
+
+  toStr = value:
+    if true == value then
+      "yes"
+    else if false == value then
+      "no"
+    else if lib.isString value then
+      "'${lib.replaceStrings [ "'" ] [ "''" ] value}'"
+    else
+      toString value;
+
+  postgresConfFile = pkgs.writeText "postgresql.conf" ''
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "${n} = ${toStr v}") config.settings)}
+  '';
 
   setupInitialDatabases = ''
     # Create initial databases
     dbAlreadyExists="$(
-      echo "SELECT 1 as exists FROM pg_database WHERE datname = '${databaseName}';" | \
+      echo "SELECT 1 as exists FROM pg_database WHERE datname = '${config.databaseName}';" | \
       psql --dbname postgres | \
       ${pkgs.gnugrep}/bin/grep -c 'exists = "1"' || true
     )"
     echo $dbAlreadyExists
     if [ 1 -ne "$dbAlreadyExists" ]; then
-      echo "Creating database: ${databaseName}"
-      echo 'create database "${databaseName}";' | psql --dbname postgres
+      echo "Creating database: ${config.databaseName}"
+      echo 'create database "${config.databaseName}";' | psql --dbname postgres
     fi
   '';
 
   setupPostgres = pkgs.writeShellScriptBin "setup-postgres" ''
     set -euo pipefail
-    export PATH=${package}/bin:${pkgs.coreutils}/bin
+    export PATH=${config.package}/bin:${pkgs.coreutils}/bin
 
     POSTGRES_RUN_INITIAL_SCRIPT="false"
     if [[ ! -d "$PGDATA" ]]; then
@@ -38,14 +51,14 @@ let
       echo
     fi
 
-    cp ${postgresConf} "$PGDATA/postgresql.conf"
+    cp ${postgresConfFile} "$PGDATA/postgresql.conf"
 
     if [[ "$POSTGRES_RUN_INITIAL_SCRIPT" = "true" ]]; then
       echo
       echo "PostgreSQL is setting up the initial database."
       echo
       OLDPGHOST="$PGHOST"
-      PGHOST=$(mktemp -d "$DEVSHELL_STATE_DIR/pg-init-XXXXXX")
+      PGHOST=$(mktemp -d "$DEVSHELL_ROOT/pg-init-XXXXXX")
 
       function remove_tmp_pg_init_sock_dir() {
         if [[ -d "$1" ]]; then
@@ -64,9 +77,14 @@ let
     fi
     unset POSTGRES_RUN_INITIAL_SCRIPT
   '';
-in
-  pkgs.writeShellScript "start-postgres.sh" ''
+
+  startPostgres = pkgs.writeShellScript "start-postgres.sh" ''
     set -euo pipefail
     ${setupPostgres}/bin/setup-postgres
-    exec ${package}/bin/postgres
-  ''
+    exec ${config.package}/bin/postgres -c unix_socket_directories=$PGHOST
+  '';
+in
+{
+  processes.postgres.exec = startPostgres;
+  buildInputs = [ config.package ];
+}

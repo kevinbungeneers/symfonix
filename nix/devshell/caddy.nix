@@ -1,41 +1,53 @@
 { pkgs }:
 
 let
-  # TODO: make this configurable
-  domainList = pkgs.lib.concatStringsSep " " [
-    "symfonix.localhost"
-  ];
-
-  hash = builtins.hashString "sha256" domainList;
-
-  caddyFile = pkgs.writeTextFile {
-    name = "Caddyfile";
-    text = ''
-      symfonix.localhost {
-        log
-      	root * {$PROJECT_DIR}/public
-      	php_fastcgi unix///{$DEVSHELL_STATE_DIR}/data/php/php-fpm.sock
-      	encode zstd gzip
-      	file_server
-      	tls {$DEVSHELL_STATE_DIR}/data/mkcert/symfonix.localhost.pem {$DEVSHELL_STATE_DIR}/data/mkcert/symfonix.localhost-key.pem
-      }
-    '';
+  config = {
+    package = pkgs.caddy;
+    virtualHosts = {
+      "symfonix.localhost" = {
+        aliases = [];
+        config = ''
+          log
+          root * {$PROJECT_ROOT}/public
+          php_fastcgi unix///{$DEVSHELL_ROOT}/data/php-fpm/www.sock
+          encode zstd gzip
+          file_server
+          tls {$DEVSHELL_ROOT}/data/mkcert/symfonix.localhost.pem {$DEVSHELL_ROOT}/data/mkcert/symfonix.localhost-key.pem
+        '';
+      };
+    };
   };
-in
-  pkgs.writeShellScript "start-caddy.sh" ''
-    mkcert -CAROOT
 
-    if [[ ! -f $DEVSHELL_STATE_DIR/data/mkcert/hash || "$(cat $DEVSHELL_STATE_DIR/data/mkcert/hash)" != "${hash}" ]]; then
-      mkdir -p $DEVSHELL_STATE_DIR/data/mkcert
+  vhostConfigFromAttrs = vhostName: vhostAttrs: ''
+    ${vhostName} ${builtins.concatStringsSep " " vhostAttrs.aliases} {
+      ${vhostAttrs.config}
+    }
+  '';
 
-      echo "${hash}" > $DEVSHELL_STATE_DIR/data/mkcert/hash
+  caddyFile = pkgs.writeText "Caddyfile" (
+    builtins.concatStringsSep "\n" (pkgs.lib.mapAttrsToList vhostConfigFromAttrs config.virtualHosts)
+  );
 
-      pushd $DEVSHELL_STATE_DIR/data/mkcert > /dev/null
+  domainList = vhostName: vhostAttrs: (
+    [ vhostName ] ++ vhostAttrs.aliases
+  );
 
-      PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert ${domainList} 2> /dev/null
+  domainListStr = builtins.concatStringsSep " " (builtins.concatLists (pkgs.lib.mapAttrsToList domainList config.virtualHosts));
 
+  hash = builtins.hashString "sha256" domainListStr;
+
+  caddyStartScript = pkgs.writeShellScript "start-caddy.sh" ''
+    if [[ ! -f $DEVSHELL_ROOT/data/mkcert/hash || "$(cat $DEVSHELL_ROOT/data/mkcert/hash)" != "${hash}" ]]; then
+      mkdir -p $DEVSHELL_ROOT/data/mkcert
+      echo "${hash}" > $DEVSHELL_ROOT/data/mkcert/hash
+      pushd $DEVSHELL_ROOT/data/mkcert > /dev/null
+      PATH="${pkgs.nssTools}/bin:$PATH" ${pkgs.mkcert}/bin/mkcert ${domainListStr}
       popd > /dev/null
     fi
 
-    XDG_DATA_HOME=$DEVSHELL_STATE_DIR/data XDG_CONFIG_HOME=$DEVSHELL_STATE_DIR/config exec ${pkgs.caddy}/bin/caddy run --config ${caddyFile} --adapter caddyfile
-  ''
+    XDG_DATA_HOME=$DEVSHELL_ROOT/data XDG_CONFIG_HOME=$DEVSHELL_ROOT/config exec ${config.package}/bin/caddy run --config ${caddyFile} --adapter caddyfile
+  '';
+in {
+   processes.caddy.exec = caddyStartScript;
+   buildInputs = [];
+}

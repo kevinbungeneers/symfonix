@@ -18,9 +18,10 @@
         inherit (phpPkgs) phpPkgs;
       });
 
-      devShells = (import ./nix/devshell {
+      devShells.default = (import ./nix/devshell {
         inherit pkgs;
         inherit (phpPkgs) phpPkgs;
+        inherit (pkgs) lib;
       });
     }
   );
