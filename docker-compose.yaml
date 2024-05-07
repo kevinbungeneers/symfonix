@@ -15,7 +15,7 @@ services:
       - php
     restart: unless-stopped
     environment:
-      SERVER_NAME: "http://localhost:8080"
+      SERVER_NAME: http://localhost:8080
     volumes:
       - php_socket:/var/run/php
       - caddy_data:/data

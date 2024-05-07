@@ -29,22 +29,26 @@ let
     '';
   });
 
-  user = "symfonix";
-  group = "symfonix";
-  uid = "1000";
-  gid = "1000";
+  user = {
+    name = "symfonix";
+    id = 1000;
+  };
+  group = {
+    name = "symfonix";
+    id = 1000;
+  };
 
   mkEtc = {name, extra }: pkgs.runCommand name { } ''
     mkdir -p $out/etc/pam.d
 
     echo "root:x:0:0:System administrator:/dev/null:noshell" > $out/etc/passwd
-    echo "${user}:x:${uid}:${gid}::/dev/null:noshell" >> $out/etc/passwd
+    echo "${user.name}:x:${toString user.id}:${toString group.id}::/dev/null:noshell" >> $out/etc/passwd
 
     echo "root:!x:::::::" > $out/etc/shadow
-    echo "${user}:!x:::::::" >> $out/etc/shadow
+    echo "${user.name}:!x:::::::" >> $out/etc/shadow
 
     echo "root:x:0:" > $out/etc/group
-    echo "${group}:x:${gid}:" >> $out/etc/group
+    echo "${group.name}:x:${toString group.id}:" >> $out/etc/group
 
     cat > $out/etc/pam.d/other <<EOF
     account sufficient pam_unix.so
@@ -58,11 +62,24 @@ let
     ${extra}
   '';
 
+  mkVar = pkgs.runCommand "container-var" { } ''
+    mkdir -p $out/var/run/php
+  '';
+
+  mkCaddyConfig = pkgs.runCommand "caddy-config" { } ''
+    mkdir -p $out/srv/caddy/{data,config}
+  '';
+
+  publicFiles = pkgs.runCommand "public" { } ''
+    mkdir -p $out/share/php/symfonix
+    cp -R ${project}/share/php/symfonix/public $out/share/php/symfonix/public
+  '';
+
   caddyEtc = ''
     mkdir -p $out/etc/caddy
 
     cat <<EOT >> $out/etc/caddy/Caddyfile
-    http://localhost:8080 {
+    {\$SERVER_NAME} {
       log
       root * /share/php/symfonix/public
       php_fastcgi unix//var/run/php/php-fpm.sock
@@ -97,22 +114,9 @@ let
     pm.max_spare_servers = 3
     EOT
   '';
-
-  mkVar = (pkgs.runCommand "container-var" { } ''
-    mkdir -p $out/var/run/php
-  '');
-
-  mkCaddyConfig = (pkgs.runCommand "caddy-config" { } ''
-    mkdir -p $out/srv/caddy/{data,config}
-  '');
-
-  publicFiles = (pkgs.runCommand "public" { } ''
-    mkdir -p $out/share/php/symfonix
-    cp -R ${project}/share/php/symfonix/public $out/share/php/symfonix/public
-  '');
 in
 {
-  caddy = nix2containerPkgs.nix2container.buildImage {
+  caddyImage = nix2containerPkgs.nix2container.buildImage {
     name = "symfonix-caddy";
     tag = "latest";
     maxLayers = 99;
@@ -127,42 +131,42 @@ in
         path = mkVar;
         regex = "/var/run/php";
         mode = "0755";
-        uid = 1000;
-        gid = 1000;
-        uname = "symfonix";
-        gname = "symfonix";
+        uid = user.id;
+        gid = group.id;
+        uname = user.name;
+        gname = group.name;
       }
       {
         path = mkCaddyConfig;
         regex = "/srv/caddy";
         mode = "0755";
-        uid = 1000;
-        gid = 1000;
-        uname = "symfonix";
-        gname = "symfonix";
+        uid = user.id;
+        gid = group.id;
+        uname = user.name;
+        gname = group.name;
       }
       {
         path = publicFiles;
         regex = "/share/php/symfonix";
         mode = "0755";
-        uid = 1000;
-        gid = 1000;
-        uname = "symfonix";
-        gname = "symfonix";
+        uid = user.id;
+        gid = group.id;
+        uname = user.name;
+        gname = group.name;
       }
     ];
     config = {
-      User = "${user}";
+      User = "${user.name}";
       WorkingDir = "/share/php/symfonix";
       Cmd = [ "${pkgs.caddy}/bin/caddy" "run" "--config" "/etc/caddy/Caddyfile" "--adapter" "caddyfile" ];
       Env = [
         "XDG_CONFIG_HOME=/srv/caddy/config"
-        "XDG_DATA_HOME /srv/caddy/data"
+        "XDG_DATA_HOME=/srv/caddy/data"
       ];
     };
   };
 
-  php = nix2containerPkgs.nix2container.buildImage {
+  phpImage = nix2containerPkgs.nix2container.buildImage {
     name = "symfonix-php";
     tag = "latest";
     maxLayers = 99;
@@ -176,23 +180,23 @@ in
         path = mkVar;
         regex = "/var/run/php";
         mode = "0755";
-        uid = 1000;
-        gid = 1000;
-        uname = "symfonix";
-        gname = "symfonix";
+        uid = user.id;
+        gid = group.id;
+        uname = user.name;
+        gname = group.name;
       }
       {
         path = project;
         regex = "/share/php/symfonix";
         mode = "0755";
-        uid = 1000;
-        gid = 1000;
-        uname = "symfonix";
-        gname = "symfonix";
+        uid = user.id;
+        gid = group.id;
+        uname = user.name;
+        gname = group.name;
       }
     ];
     config = {
-      User = "${user}";
+      User = "${user.name}";
       WorkingDir = "/share/php/symfonix";
       Cmd = [ "${phpPkgs.prod}/bin/php-fpm" "-y" "/etc/php/php-fpm.d/php-fpm.conf" ];
     };
